@@ -103,11 +103,27 @@ try {
     }
     $sqlinesFolder = Join-Path $DumpFolder "SQLlines"
     Write-Status "Step 2: Setting up SQLines"
-    if (-not $SkipDownload) {
+	
+	# Controlla se SQLines esiste già
+	$sqlinesExists = $false
+	if (Test-Path $sqlinesFolder) {
+		$sqlinesExe = Get-ChildItem -Path $sqlinesFolder -Filter "sqlines.exe" -Recurse | Select-Object -First 1
+		if ($sqlinesExe) {
+			$sqlinesExists = $true
+			Write-Success "SQLines already exists at: $($sqlinesExe.FullName)"
+			Write-Step "Skipping download. Use -SkipDownload=$false to force re-download"
+		}
+	}	
+	
+if (-not $SkipDownload -and -not $sqlinesExists) {
+    #if (-not $SkipDownload) {
         Write-Step "Downloading SQLlines from $SQLlinesUrl"
         $zipFile = Join-Path $DumpFolder "sqlines.zip"
+		# Se il ZIP esiste già, salta il download
         if (Test-Path $zipFile) {
-            Remove-Item $zipFile -Force
+			# Remove-Item $zipFile -Force  # Mantieni ZIP per evitare re-download
+			Write-Step "Keeping ZIP file for future use: $zipFile"			
+            #Remove-Item $zipFile -Force
         }
         $maxRetries = 3
         $retryCount = 0
@@ -156,7 +172,7 @@ try {
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             Write-Step "Extracting ZIP archive..."
             [System.IO.Compression.ZipFile]::ExtractToDirectory($zipFile, $sqlinesFolder)
-            Remove-Item $zipFile -Force
+            #Remove-Item $zipFile -Force
             Write-Success "SQLlines extracted to $sqlinesFolder"
         } catch {
             Write-Error "Failed to extract SQLlines: $($_.Exception.Message)"
@@ -272,7 +288,7 @@ try {
  #               }
 				
 				
-				# Dopo la rinomina delle cartelle (circa riga 200)
+			
 				if (Test-Path $reportFile) {
 					$newName = "sqlines_report_$baseName.html"
 					Move-Item $reportFile (Join-Path $scriptDir $newName) -Force
@@ -296,11 +312,45 @@ try {
 					$reportContent = $reportContent -replace '(href|src)="scripts/', "`$1=`"scripts_$baseName/"
 					$reportContent = $reportContent -replace "'scripts/", "'scripts_$baseName/"
 					
+				
+					# Sostituisci in due passaggi separati
+					$reportContent = $reportContent -replace 'href="outr/', "href=`"outr_$baseName/"
+					$reportContent = $reportContent -replace 'src="outr/', "src=`"outr_$baseName/"
+					$reportContent = $reportContent -replace 'href="scripts/', "href=`"scripts_$baseName/"
+					$reportContent = $reportContent -replace 'src="scripts/', "src=`"scripts_$baseName/"					
+					
+					# Usa il metodo .NET per maggior controllo
+					$pattern = '(href|src)="outr/'
+					$replacement = "`$1=`"outr_$baseName/"
+					$reportContent = [regex]::Replace($reportContent, $pattern, $replacement)					
+					
+					# Rinomina percorsi outr e scripts nel contenuto HTML con il suffisso _<baseName>
+					$reportContent = [regex]::Replace($reportContent, '(href|src)="outr//', "`$1=`"outr_$baseName//")
+					$reportContent = $reportContent -replace "'outr//", "'outr_$baseName//"
+
+					$reportContent = [regex]::Replace($reportContent, '(href|src)="scripts//', "`$1=`"scripts_$baseName//")
+					$reportContent = $reportContent -replace "'scripts//", "'scripts_$baseName//"
+					
+					
+					
+					# FIX: Aggiorna i riferimenti nel report HTML
+					$reportPath = Join-Path $scriptDir $newName
+					Write-Step "Updating references in HTML report..."
+
+					# Leggi il contenuto del report
+					$reportContent = Get-Content $reportPath -Raw -Encoding UTF8
+
+					# Sostituisci semplicemente la stringa "outr\" con "outr_nomedatabase\"
+					$reportContent = $reportContent.Replace("outr\", "outr_$baseName\")
+
 					# Salva il report aggiornato
 					$utf8NoBom = New-Object System.Text.UTF8Encoding $false
 					[System.IO.File]::WriteAllText($reportPath, $reportContent, $utf8NoBom)
+
+					Write-Success "Updated HTML report references"					
+										
 					
-					Write-Success "Updated HTML report references"
+					
 				}				
 			
                 if (Test-Path $logFile) {
