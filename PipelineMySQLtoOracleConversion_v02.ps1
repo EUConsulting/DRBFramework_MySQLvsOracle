@@ -265,11 +265,44 @@ try {
                     Move-Item $scriptsFolder (Join-Path $scriptDir $newName) -Force
                     Write-Success "Renamed: scripts to $newName"
                 }
-                if (Test-Path $reportFile) {
-                    $newName = "sqlines_report_$baseName.html"
-                    Move-Item $reportFile (Join-Path $scriptDir $newName) -Force
-                    Write-Success "Saved report as: $newName"
-                }
+ #               if (Test-Path $reportFile) {
+ #                   $newName = "sqlines_report_$baseName.html"
+ #                   Move-Item $reportFile (Join-Path $scriptDir $newName) -Force
+ #                   Write-Success "Saved report as: $newName"
+ #               }
+				
+				
+				# Dopo la rinomina delle cartelle (circa riga 200)
+				if (Test-Path $reportFile) {
+					$newName = "sqlines_report_$baseName.html"
+					Move-Item $reportFile (Join-Path $scriptDir $newName) -Force
+					Write-Success "Saved report as: $newName"
+					
+					# FIX: Aggiorna i riferimenti nel report HTML
+					$reportPath = Join-Path $scriptDir $newName
+					Write-Step "Updating references in HTML report..."
+					
+					# Leggi il contenuto del report
+					$reportContent = Get-Content $reportPath -Raw -Encoding UTF8
+					
+					# Sostituisci i riferimenti alla cartella out
+					# Pattern tipici nel report SQLines:
+					# href="out/..." → href="out_nomedatabase/..."
+					# src="out/..." → src="out_nomedatabase/..."
+					$reportContent = $reportContent -replace '(href|src)="outr/', "`$1=`"outr_$baseName/"
+					$reportContent = $reportContent -replace "'outr/", "'outr_$baseName/"
+					
+					# Sostituisci anche riferimenti a scripts se necessario
+					$reportContent = $reportContent -replace '(href|src)="scripts/', "`$1=`"scripts_$baseName/"
+					$reportContent = $reportContent -replace "'scripts/", "'scripts_$baseName/"
+					
+					# Salva il report aggiornato
+					$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+					[System.IO.File]::WriteAllText($reportPath, $reportContent, $utf8NoBom)
+					
+					Write-Success "Updated HTML report references"
+				}				
+			
                 if (Test-Path $logFile) {
                     $newName = "sqlines_$baseName.log"
                     Move-Item $logFile (Join-Path $scriptDir $newName) -Force
